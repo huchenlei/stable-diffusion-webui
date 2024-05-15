@@ -100,13 +100,33 @@ def txt2img_upscale(id_task: str, request: gr.Request, gallery, gallery_index, g
 
 
 def txt2img(id_task: str, request: gr.Request, *args):
-    p = txt2img_create_processing(id_task, request, *args)
+    from torch.profiler import profile, record_function, ProfilerActivity
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+             record_shapes=True,
+             profile_memory=True, # Track memory allocation
+             with_stack=True) as prof:
+        with record_function("model_inference"):
+            p = txt2img_create_processing(id_task, request, *args)
 
-    with closing(p):
-        processed = modules.scripts.scripts_txt2img.run(p, *p.script_args)
+            with closing(p):
+                processed = modules.scripts.scripts_txt2img.run(p, *p.script_args)
 
-        if processed is None:
-            processed = processing.process_images(p)
+                if processed is None:
+                    processed = processing.process_images(p)
+
+    # Print profiling results
+    print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
+
+    # Export to Chrome trace format
+    prof.export_chrome_trace("trace.json")
+
+    # p = txt2img_create_processing(id_task, request, *args)
+
+    # with closing(p):
+    #     processed = modules.scripts.scripts_txt2img.run(p, *p.script_args)
+
+    #     if processed is None:
+    #         processed = processing.process_images(p)
 
     shared.total_tqdm.clear()
 
